@@ -5,6 +5,19 @@
 
 package demo.objectdetection
 
+import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.layout.size
+import androidx.compose.runtime.remember
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Color.Companion.Red
+import androidx.compose.ui.res.loadImageBitmap
+import androidx.compose.ui.res.useResource
+import androidx.compose.ui.unit.IntSize
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.window.*
+import androidx.compose.ui.window.Window
 import getFileFromResource
 import org.jetbrains.kotlinx.dl.api.inference.loaders.ONNXModelHub
 import org.jetbrains.kotlinx.dl.api.inference.objectdetection.DetectedObject
@@ -12,11 +25,7 @@ import org.jetbrains.kotlinx.dl.api.inference.onnx.ONNXModels
 import org.jetbrains.kotlinx.dl.dataset.image.ColorOrder
 import org.jetbrains.kotlinx.dl.dataset.preprocessor.*
 import org.jetbrains.kotlinx.dl.dataset.preprocessor.image.*
-import toBufferedImage
-import java.awt.*
 import java.io.File
-import javax.swing.JFrame
-import javax.swing.JPanel
 import kotlin.math.abs
 
 fun main() {
@@ -27,20 +36,22 @@ fun main() {
     model.use { detectionModel ->
         println(detectionModel)
 
-        val imageFile = getFileFromResource("detection/image2.jpg")
+        val fileName = "detection/image2.jpg"
+        val imageFile = getFileFromResource(fileName)
         val detectedObjects =
-            detectionModel.detectObjects(imageFile = imageFile, topK = 1000)
+            detectionModel.detectObjects(imageFile = imageFile, topK = 20)
 
         detectedObjects.forEach {
             println("Found ${it.classLabel} with probability ${it.probability}")
         }
 
-        visualise(imageFile, detectedObjects)
+        visualise(imageFile, fileName, detectedObjects)
     }
 }
 
 private fun visualise(
     imageFile: File,
+    fileName: String,
     detectedObjects: List<DetectedObject>
 ) {
     val preprocessing: Preprocessing = preprocess {
@@ -64,64 +75,55 @@ private fun visualise(
 
     val rawImage = preprocessing().first
 
-    drawDetectedObjects(rawImage, ImageShape(1200, 1200, 3), detectedObjects)
+    drawDetectedObjects(fileName, rawImage, ImageShape(1200, 1200, 3), detectedObjects)
 }
 
-private fun drawDetectedObjects(dst: FloatArray, imageShape: ImageShape, detectedObjects: List<DetectedObject>) {
-    val frame = JFrame("Filters")
-    @Suppress("UNCHECKED_CAST")
-    frame.contentPane.add(JPanel(dst, imageShape, detectedObjects))
-    frame.pack()
-    frame.setLocationRelativeTo(null)
-    frame.isVisible = true
-    frame.defaultCloseOperation = JFrame.EXIT_ON_CLOSE
-    frame.isResizable = false
-}
+private fun drawDetectedObjects(fileName: String, dst: FloatArray, imageShape: ImageShape, detectedObjects: List<DetectedObject>) {
 
-class JPanel(
-    val image: FloatArray,
-    val imageShape: ImageShape,
-    private val detectedObjects: List<DetectedObject>
-) : JPanel() {
-    private val bufferedImage = image.toBufferedImage(imageShape)
+    application {
 
-    override fun paint(graphics: Graphics) {
-        super.paint(graphics)
+        val image = remember {
+            useResource(fileName, ::loadImageBitmap)
+        }
 
-        graphics.drawImage(bufferedImage, 0, 0, null)
+        val width = imageShape.width!!.toInt()
+        val height = imageShape.height!!.toInt()
+        val windowState = rememberWindowState(width = width.dp, height = height.dp)
 
-        detectedObjects.forEach {
-            val top = it.yMin * imageShape.height!!
-            val left = it.xMin * imageShape.width!!
-            val bottom = it.yMax * imageShape.height!!
-            val right = it.xMax * imageShape.width!!
-            if (abs(top - bottom) > 300 || abs(right - left) > 300) return@forEach
-            // left, bot, right, top
+        Window(
+            onCloseRequest = ::exitApplication,
+            state = windowState,
+            title = "Object detection"
+        ) {
 
-            // y = columnIndex
-            // x = rowIndex
-            val yRect = bottom
-            val xRect = left
-            graphics.color = Color.ORANGE
-            graphics.font = Font("Courier New", 1, 17)
-            graphics.drawString(" ${it.classLabel} : ${it.probability}", xRect.toInt(), yRect.toInt() - 8)
+            Canvas(modifier = Modifier.size(width.dp, height.dp)) {
 
-            graphics as Graphics2D
-            val stroke1: Stroke = BasicStroke(6f)
-            graphics.setColor(Color.RED)
-            graphics.stroke = stroke1
-            graphics.drawRect(xRect.toInt(), yRect.toInt(), (right - left).toInt(), (top - bottom).toInt())
+                drawImage(image, dstSize = IntSize(width, height))
+
+                detectedObjects.forEach {
+                    val top = it.yMin * height
+                    val left = it.xMin * width
+                    val bottom = it.yMax * height
+                    val right = it.xMax * width
+                    if (abs(top - bottom) > 300 || abs(right - left) > 300) return@forEach
+
+                    val yRect = bottom
+                    val xRect = left
+
+
+                    drawRect(
+                        color = Red,
+                        topLeft = Offset(xRect, yRect),
+                        size = Size(right - left, top - bottom),
+                        style = androidx.compose.ui.graphics.drawscope.Stroke(3f),
+                    )
+                }
+            }
         }
     }
-
-    override fun getPreferredSize(): Dimension {
-        return Dimension(bufferedImage.width, bufferedImage.height)
-    }
-
-    override fun getMinimumSize(): Dimension {
-        return Dimension(bufferedImage.width, bufferedImage.height)
-    }
 }
+
+
 
 
 
