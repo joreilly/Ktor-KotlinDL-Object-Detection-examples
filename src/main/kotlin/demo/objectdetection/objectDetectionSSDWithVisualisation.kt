@@ -12,6 +12,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color.Companion.Red
+import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
+import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.res.loadImageBitmap
 import androidx.compose.ui.res.useResource
 import androidx.compose.ui.unit.IntSize
@@ -25,6 +27,7 @@ import org.jetbrains.kotlinx.dl.api.inference.onnx.ONNXModels
 import org.jetbrains.kotlinx.dl.dataset.image.ColorOrder
 import org.jetbrains.kotlinx.dl.dataset.preprocessor.*
 import org.jetbrains.kotlinx.dl.dataset.preprocessor.image.*
+import org.jetbrains.skia.*
 import java.io.File
 import kotlin.math.abs
 
@@ -90,6 +93,13 @@ private fun drawDetectedObjects(fileName: String, dst: FloatArray, imageShape: I
         val height = imageShape.height!!.toInt()
         val windowState = rememberWindowState(width = width.dp, height = height.dp)
 
+        val typeface = Typeface.makeFromName("Courier New", FontStyle.NORMAL)
+        val font = Font(typeface, 30f)
+
+        val paint = Paint().apply {
+            color = Color.WHITE
+        }
+
         Window(
             onCloseRequest = ::exitApplication,
             state = windowState,
@@ -100,16 +110,20 @@ private fun drawDetectedObjects(fileName: String, dst: FloatArray, imageShape: I
 
                 drawImage(image, dstSize = IntSize(width, height))
 
-                detectedObjects.forEach {
-                    val top = it.yMin * height
-                    val left = it.xMin * width
-                    val bottom = it.yMax * height
-                    val right = it.xMax * width
+                detectedObjects.forEach { detectedObject ->
+                    val top = detectedObject.yMin * height
+                    val left = detectedObject.xMin * width
+                    val bottom = detectedObject.yMax * height
+                    val right = detectedObject.xMax * width
                     if (abs(top - bottom) > 300 || abs(right - left) > 300) return@forEach
 
                     val yRect = bottom
                     val xRect = left
 
+                    drawIntoCanvas {
+                        it.nativeCanvas.drawString("${detectedObject.classLabel} : ${detectedObject.probability}",
+                            xRect, yRect, font, paint)
+                    }
 
                     drawRect(
                         color = Red,
